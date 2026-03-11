@@ -493,6 +493,66 @@ export default function App() {
         </div>
       </div>
 
+      {/* TABLE VIEW */}
+      <div style={{ margin: "0 20px 20px", borderRadius: 14, overflow: "hidden", boxShadow: "0 4px 16px rgba(0,0,0,0.09)", background: "#fff" }}>
+        <div style={{ padding: "12px 16px", background: "linear-gradient(90deg,#1e3a5f,#1e4976)", color: "#fff", fontSize: 13, fontWeight: 700 }}>
+          📋 案件列表
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: "#f1f5f9" }}>
+                {["類型","狀態","案名","含稅金額 (仟元)","未稅金額 (仟元)","利潤率 (%)","預估餘絀 (仟元)","操作"].map(h => (
+                  <th key={h} style={{ padding: "10px 11px", textAlign: h==="操作"?"center":"left", whiteSpace: "nowrap", fontWeight: 700, fontSize: 12, color: "#475569", borderBottom: "2px solid #e2e8f0" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((item, idx) => {
+                const s = surplus(item);
+                const typeStyle  = TAG_STYLES[item.type]    || { bg: "#f1f5f9", color: "#64748b" };
+                const statusStyle = STATUS_STYLES[item.status] || { bg: "#f1f5f9", color: "#64748b" };
+                return (
+                  <tr key={item.id}
+                    style={{ background: idx%2===0?"#f8fafc":"#fff", transition: "background 0.15s" }}
+                    onMouseEnter={e => e.currentTarget.style.background="#e0f2fe"}
+                    onMouseLeave={e => e.currentTarget.style.background=idx%2===0?"#f8fafc":"#fff"}
+                  >
+                    <td style={{ padding: "11px 11px", borderBottom: "1px solid #f1f5f9" }}>
+                      <span style={{ ...tg, background: typeStyle.bg, color: typeStyle.color }}>{item.type||"—"}</span>
+                    </td>
+                    <td style={{ padding: "11px 11px", borderBottom: "1px solid #f1f5f9" }}>
+                      <span style={{ ...tg, background: statusStyle.bg, color: statusStyle.color }}>{item.status||"—"}</span>
+                    </td>
+                    <td style={{ padding: "11px 11px", fontWeight: 600, color: "#0f2744", whiteSpace: "nowrap", borderBottom: "1px solid #f1f5f9" }}>{item.name}</td>
+                    <td style={{ padding: "11px 11px", textAlign: "right", color: item.taxAmount?"#0f2744":"#94a3b8", borderBottom: "1px solid #f1f5f9" }}>{fmt(item.taxAmount)}</td>
+                    <td style={{ padding: "11px 11px", textAlign: "right", fontWeight: 700, color: "#1e3a5f", borderBottom: "1px solid #f1f5f9" }}>{fmt(item.noTaxAmount)}</td>
+                    <td style={{ padding: "11px 11px", textAlign: "right", borderBottom: "1px solid #f1f5f9" }}>
+                      <span style={{ background: "#ede9fe", color: "#6d28d9", borderRadius: 6, padding: "2px 7px", fontWeight: 700, fontSize: 12 }}>{item.profitRate}%</span>
+                    </td>
+                    <td style={{ padding: "11px 11px", textAlign: "right", fontWeight: 700, color: s>0?"#059669":"#ef4444", borderBottom: "1px solid #f1f5f9" }}>
+                      {s!=null?fmt(Math.round(s)):"—"}
+                    </td>
+                    <td style={{ padding: "11px 11px", textAlign: "center", whiteSpace: "nowrap", borderBottom: "1px solid #f1f5f9" }}>
+                      <button onClick={() => openEdit(item)} style={{ ...ab, background:"#dbeafe", color:"#1d4ed8" }}>✏️</button>
+                      <button onClick={() => setDeleteConfirm(item)} style={{ ...ab, background:"#fee2e2", color:"#dc2626", marginLeft:4 }}>🗑️</button>
+                    </td>
+                  </tr>
+                );
+              })}
+              <tr style={{ background: "#1e3a5f", color: "#fff", fontWeight: 700 }}>
+                <td colSpan={3} style={{ padding: "12px 11px" }}>合計</td>
+                <td style={{ padding: "12px 11px", textAlign: "right" }}>{fmt(filtered.reduce((s,d)=>s+(d.taxAmount||0),0))}</td>
+                <td style={{ padding: "12px 11px", textAlign: "right" }}>{fmt(filtered.reduce((s,d)=>s+d.noTaxAmount,0))}</td>
+                <td />
+                <td style={{ padding: "12px 11px", textAlign: "right", color: "#6ee7b7" }}>{fmt(Math.round(filtered.reduce((s,d)=>s+(surplus(d)||0),0)))}</td>
+                <td />
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* CHARTS */}
       <div style={{ padding: "0 20px 32px" }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: "#1e3a5f", marginBottom: 14 }}>📊 數據分析</div>
