@@ -64,9 +64,23 @@ export default function App() {
   const [importPreview, setImportPreview] = useState(null); // null | array of parsed items
   const [importing, setImporting] = useState(false);
 
-  // 初始載入 — 全部並行，不再序列等待
+  // 初始載入 — 先顯示快取，背景同步 Firebase
   useEffect(() => {
     (async () => {
+      // 先從 sessionStorage 快取還原，讓畫面立即顯示
+      try {
+        const cached = sessionStorage.getItem("fd_cache");
+        if (cached) {
+          const c = JSON.parse(cached);
+          if (c.data)           setData(c.data);
+          if (c.logs)           setLogs(c.logs);
+          if (c.govTargetInput) setGovTargetInput(c.govTargetInput);
+          if (c.civTargetInput) setCivTargetInput(c.civTargetInput);
+          setDbReady(true); // 先解除載入遮罩
+        }
+      } catch {}
+
+      // 背景從 Firebase 同步最新資料
       const [casesSnap, logsSnap, govTgt, civTgt] = await Promise.all([
         getDocs(collection(db, "cases")),
         getDocs(query(collection(db, "logs"), orderBy("createdAt", "desc"), limit(200))),
@@ -74,14 +88,27 @@ export default function App() {
         getSetting("civTarget"),
       ]);
 
-      setData(casesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLogs(logsSnap.docs.map(d => {
+      const freshData = casesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const freshLogs = logsSnap.docs.map(d => {
         const r = d.data();
         return { id: d.id, time: r.createdAt?.toDate().toLocaleString("zh-TW") ?? "", action: r.action, name: r.caseName, detail: r.detail };
-      }));
-      if (govTgt) setGovTargetInput(govTgt);
-      if (civTgt) setCivTargetInput(civTgt);
+      });
+      const freshGov = govTgt || "";
+      const freshCiv = civTgt || "";
+
+      setData(freshData);
+      setLogs(freshLogs);
+      if (freshGov) setGovTargetInput(freshGov);
+      if (freshCiv) setCivTargetInput(freshCiv);
       setDbReady(true);
+
+      // 更新快取
+      try {
+        sessionStorage.setItem("fd_cache", JSON.stringify({
+          data: freshData, logs: freshLogs,
+          govTargetInput: freshGov, civTargetInput: freshCiv,
+        }));
+      } catch {}
 
       // 記錄進入系統
       addDoc(collection(db, "logs"), {
@@ -105,6 +132,14 @@ export default function App() {
   }, [civTargetInput, dbReady]);
 
   const dataWithCodes = assignCodes(data);
+
+  // 快取更新 helper
+  const updateCache = (newData) => {
+    try {
+      const cached = JSON.parse(sessionStorage.getItem("fd_cache") || "{}");
+      sessionStorage.setItem("fd_cache", JSON.stringify({ ...cached, data: newData }));
+    } catch {}
+  };
 
   // addLog — fire and forget，不 await，不阻塞 UI
   const addLog = (action, item) => {
@@ -132,24 +167,33 @@ export default function App() {
 
     // Optimistic UI — 先關 modal、先更新畫面，再背景寫入 Firebase
     if (editId != null) {
-      setData(prev => prev.map(d => d.id === editId ? { ...item, id: editId } : d));
+      const newData = data.map(d => d.id === editId ? { ...item, id: editId } : d);
+      setData(newData);
+      updateCache(newData);
       setShowModal(false);
       addLog("修改", item);
       const { id, code, ...fields } = item;
       updateDoc(doc(db, "cases", editId), fields);
     } else {
       const tempId = `temp_${Date.now()}`;
-      setData(prev => [...prev, { ...item, id: tempId }]);
+      const newData = [...data, { ...item, id: tempId }];
+      setData(newData);
+      updateCache(newData);
       setShowModal(false);
       addLog("新增", item);
       addDoc(collection(db, "cases"), { ...item, createdAt: serverTimestamp() })
-        .then(ref => setData(prev => prev.map(d => d.id === tempId ? { ...item, id: ref.id } : d)));
+        .then(ref => {
+          const updated = newData.map(d => d.id === tempId ? { ...item, id: ref.id } : d);
+          setData(updated);
+          updateCache(updated);
+        });
     }
   };
 
   const handleDelete = async (item) => {
-    // Optimistic UI — 先從畫面移除，再背景刪除
-    setData(prev => prev.filter(d => d.id !== item.id));
+    const newData = data.filter(d => d.id !== item.id);
+    setData(newData);
+    updateCache(newData);
     setDeleteConfirm(null);
     addLog("刪除", item);
     deleteDoc(doc(db, "cases", item.id));
