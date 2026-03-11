@@ -78,6 +78,13 @@ export default function App() {
       if (govTgt) setGovTargetInput(govTgt);
       if (civTgt) setCivTargetInput(civTgt);
       setDbReady(true);
+
+      // 記錄進入系統
+      addDoc(collection(db, "logs"), {
+        action: "進入系統", caseName: "", detail: "開啟財務分析系統", createdAt: serverTimestamp()
+      }).then(ref => setLogs(prev => [{
+        id: ref.id, time: new Date().toLocaleString("zh-TW"), action: "進入系統", name: "", detail: "開啟財務分析系統"
+      }, ...prev].slice(0, 200)));
     })();
   }, []);
 
@@ -758,18 +765,25 @@ export default function App() {
             </div>
             <div style={{ overflowY:"auto", flex:1 }}>
               {logs.length===0&&<div style={{ color:"#94a3b8", textAlign:"center", padding:20 }}>尚無記錄</div>}
-              {logs.map(log=>(
-                <div key={log.id} style={{ padding:"9px 12px", borderRadius:8, marginBottom:7,
-                  background:log.action==="刪除"?"#fef2f2":log.action==="新增"?"#f0fdf4":"#f0f9ff", fontSize:12 }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:2 }}>
-                    <span style={{ fontWeight:700, color:log.action==="刪除"?"#dc2626":log.action==="新增"?"#059669":"#0284c7" }}>
-                      {log.action==="新增"?"＋":log.action==="刪除"?"🗑":"✏️"} {log.action}：{log.name}
-                    </span>
-                    <span style={{ color:"#94a3b8" }}>{log.time}</span>
+              {logs.map(log=>{
+                const cfg = {
+                  "進入系統": { bg:"#f8fafc", color:"#64748b", icon:"🔑" },
+                  "新增":     { bg:"#f0fdf4", color:"#059669", icon:"＋" },
+                  "修改":     { bg:"#f0f9ff", color:"#0284c7", icon:"✏️" },
+                  "刪除":     { bg:"#fef2f2", color:"#dc2626", icon:"🗑" },
+                }[log.action] || { bg:"#f8fafc", color:"#64748b", icon:"•" };
+                return (
+                  <div key={log.id} style={{ padding:"9px 12px", borderRadius:8, marginBottom:7, background:cfg.bg, fontSize:12 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", marginBottom:2 }}>
+                      <span style={{ fontWeight:700, color:cfg.color }}>
+                        {cfg.icon} {log.action}{log.name ? `：${log.name}` : ""}
+                      </span>
+                      <span style={{ color:"#94a3b8" }}>{log.time}</span>
+                    </div>
+                    {log.detail && <div style={{ color:"#64748b" }}>{log.detail}</div>}
                   </div>
-                  <div style={{ color:"#64748b" }}>{log.detail}</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
