@@ -2,7 +2,7 @@
  
 React + Vite + Firebase Firestore 財務儀表板，支援多人共用、雲端資料庫。
 
-## 步驟一：建立 Firebase 專案
+## 步驟一：建立 Firebase 專案 
 
 1. 前往 https://console.firebase.google.com，用 Google 帳號登入
 2. 點「新增專案」→ 填名稱 → 建立
