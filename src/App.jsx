@@ -59,12 +59,16 @@ export default function App() {
   const [editingGovTarget, setEditingGovTarget] = useState(false);
   const [editingCivTarget, setEditingCivTarget] = useState(false);
   const [dbReady, setDbReady] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importPreview, setImportPreview] = useState(null); // null | array of parsed items
+  const [importing, setImporting] = useState(false);
 
   // 初始載入 — 全部並行，不再序列等待
   useEffect(() => {
     (async () => {
       const [casesSnap, logsSnap, govTgt, civTgt] = await Promise.all([
-        getDocs(query(collection(db, "cases"), orderBy("createdAt"))),
+        getDocs(collection(db, "cases")),
         getDocs(query(collection(db, "logs"), orderBy("createdAt", "desc"), limit(200))),
         getSetting("govTarget"),
         getSetting("civTarget"),
@@ -168,6 +172,44 @@ export default function App() {
     return { group: k, 爭取金額: amt, 目標金額: typeTarget, fill: GROUP_COLORS[i] };
   });
 
+  // 批次匯入解析
+  const parseImportText = (text) => {
+    const lines = text.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+    return lines.map((line, i) => {
+      const parts = line.split(/[\t,，]+/).map(p => p.trim()).filter(Boolean);
+      if (parts.length < 3) return { _line: i+1, _raw: line, _error: "欄位不足（至少需要：案名、類型、狀態）" };
+      const name = parts[0];
+      const type = parts.find(p => p === "政收" || p === "民收");
+      const status = parts.find(p => p === "已簽約" || p === "爭取中");
+      if (!type)   return { _line: i+1, _raw: line, _error: "找不到類型（政收/民收）" };
+      if (!status) return { _line: i+1, _raw: line, _error: "找不到狀態（已簽約/爭取中）" };
+      const nums = parts.slice(1).filter(p => /^[\d.]+$/.test(p)).map(Number);
+      const profitRate = nums.find(n => n > 0 && n <= 100) ?? 15;
+      const bigNums = nums.filter(n => n > 100);
+      const taxAmount = bigNums[0] ?? null;
+      const noTaxAmount = taxAmount ? Math.round(taxAmount / 1.05) : (bigNums[1] ?? null);
+      if (!noTaxAmount) return { _line: i+1, _raw: line, _error: "找不到金額（需大於100的數字）" };
+      return { _line: i+1, _raw: line, name, type, status, taxAmount, noTaxAmount, profitRate };
+    });
+  };
+
+  const handleImportConfirm = async () => {
+    if (!importPreview) return;
+    const valid = importPreview.filter(r => !r._error);
+    if (valid.length === 0) return;
+    setImporting(true);
+    for (const item of valid) {
+      const { _line, _raw, ...fields } = item;
+      const ref = await addDoc(collection(db, "cases"), { ...fields, createdAt: serverTimestamp() });
+      setData(prev => [...prev, { ...fields, id: ref.id }]);
+    }
+    addLog("批次匯入", { type: "", status: "", noTaxAmount: valid.reduce((s, r) => s + r.noTaxAmount, 0), profitRate: "", name: `共 ${valid.length} 筆` });
+    setImporting(false);
+    setShowImport(false);
+    setImportText("");
+    setImportPreview(null);
+  };
+
   return (
     <div style={{ fontFamily: "'Noto Sans TC','Microsoft JhengHei',sans-serif", background: "#f0f4f8", minHeight: "100vh" }}>
 
@@ -191,6 +233,7 @@ export default function App() {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={() => setShowLog(true)} style={btn("#334155")}>📋 操作記錄</button>
+          <button onClick={() => { setImportText(""); setImportPreview(null); setShowImport(true); }} style={btn("#0f766e")}>📥 批次匯入</button>
           <button onClick={openAdd} style={btn("#2563eb")}>＋ 新增案件</button>
         </div>
       </div>
@@ -788,6 +831,80 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* 批次匯入 */}
+      {showImport && (
+        <div style={ov}>
+          <div style={{...mo, maxWidth:640, maxHeight:"88vh", display:"flex", flexDirection:"column"}}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+              <div style={{ fontSize:15, fontWeight:700, color:"#1e3a5f" }}>📥 批次匯入</div>
+              <button onClick={() => setShowImport(false)} style={{ background:"none", border:"none", fontSize:18, cursor:"pointer", color:"#64748b" }}>✕</button>
+            </div>
+
+            {!importPreview ? (
+              <>
+                <div style={{ fontSize:12, color:"#64748b", marginBottom:8, lineHeight:1.8, background:"#f8fafc", borderRadius:8, padding:"10px 12px" }}>
+                  <strong>格式說明：</strong>每行一筆，欄位用空白、Tab 或逗號分隔<br/>
+                  <code style={{ color:"#0f766e" }}>案名　類型　狀態　含稅金額　利潤率</code><br/>
+                  範例：<code style={{ color:"#2563eb" }}>運科中心　政收　爭取中　37500　15</code><br/>
+                  <span style={{ color:"#94a3b8" }}>含稅金額可省略、利潤率預設 15%、未稅自動計算</span>
+                </div>
+                <textarea
+                  value={importText}
+                  onChange={e => setImportText(e.target.value)}
+                  placeholder={"運科中心\t政收\t爭取中\t37500\t15\n北醫\t民收\t爭取中\t7619\t18\n智慧時尚\t民收\t已簽約\t1575\t20"}
+                  style={{ flex:1, minHeight:180, border:"1.5px solid #e2e8f0", borderRadius:10, padding:"10px 12px", fontSize:13, fontFamily:"monospace", resize:"vertical", outline:"none", color:"#1e3a5f" }}
+                />
+                <div style={{ display:"flex", gap:10, marginTop:14, justifyContent:"flex-end" }}>
+                  <button onClick={() => setShowImport(false)} style={btn("#94a3b8")}>取消</button>
+                  <button onClick={() => setImportPreview(parseImportText(importText))} style={btn("#0f766e")}>🔍 解析預覽</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize:13, color:"#475569", marginBottom:10 }}>
+                  共解析 <strong>{importPreview.length}</strong> 行，
+                  <span style={{ color:"#059669" }}>✓ 正常 {importPreview.filter(r=>!r._error).length} 筆</span>
+                  {importPreview.filter(r=>r._error).length > 0 && (
+                    <span style={{ color:"#dc2626", marginLeft:8 }}>✗ 錯誤 {importPreview.filter(r=>r._error).length} 筆</span>
+                  )}
+                </div>
+                <div style={{ overflowY:"auto", flex:1, fontSize:12 }}>
+                  {importPreview.map((r, i) => (
+                    <div key={i} style={{ padding:"8px 10px", borderRadius:8, marginBottom:6,
+                      background: r._error ? "#fef2f2" : "#f0fdf4",
+                      border: `1px solid ${r._error ? "#fecaca" : "#bbf7d0"}` }}>
+                      {r._error ? (
+                        <div style={{ color:"#dc2626" }}>第 {r._line} 行：{r._error}<br/>
+                          <span style={{ color:"#94a3b8", fontFamily:"monospace" }}>{r._raw}</span>
+                        </div>
+                      ) : (
+                        <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
+                          <span style={{ fontWeight:700, color:"#1e3a5f" }}>{r.name}</span>
+                          <span style={{ ...tg, background: r.type==="政收"?"#dbeafe":"#d1fae5", color: r.type==="政收"?"#1d4ed8":"#065f46" }}>{r.type}</span>
+                          <span style={{ ...tg, background: r.status==="已簽約"?"#bbf7d0":"#fef3c7", color: r.status==="已簽約"?"#065f46":"#92400e" }}>{r.status}</span>
+                          <span style={{ color:"#475569" }}>未稅 <strong>{fmt(r.noTaxAmount)}</strong> 仟元</span>
+                          <span style={{ color:"#7c3aed" }}>利潤率 <strong>{r.profitRate}%</strong></span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display:"flex", gap:10, marginTop:14, justifyContent:"flex-end" }}>
+                  <button onClick={() => setImportPreview(null)} style={btn("#94a3b8")}>← 返回修改</button>
+                  <button
+                    onClick={handleImportConfirm}
+                    disabled={importing || importPreview.filter(r=>!r._error).length===0}
+                    style={btn(importing ? "#94a3b8" : "#0f766e")}>
+                    {importing ? "匯入中..." : `✓ 確認匯入 ${importPreview.filter(r=>!r._error).length} 筆`}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
