@@ -173,7 +173,8 @@ export default function App() {
       setShowModal(false);
       addLog("修改", item);
       const { id, code, ...fields } = item;
-      updateDoc(doc(db, "cases", editId), fields);
+      updateDoc(doc(db, "cases", editId), fields)
+        .catch(e => alert("修改失敗：" + e.message));
     } else {
       const tempId = `temp_${Date.now()}`;
       const newData = [...data, { ...item, id: tempId }];
@@ -186,7 +187,8 @@ export default function App() {
           const updated = newData.map(d => d.id === tempId ? { ...item, id: ref.id } : d);
           setData(updated);
           updateCache(updated);
-        });
+        })
+        .catch(e => alert("新增失敗：" + e.message));
     }
   };
 
