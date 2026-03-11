@@ -53,7 +53,6 @@ export default function App() {
   const [filterType, setFilterType] = useState("全部");
   const [filterStatus, setFilterStatus] = useState("全部");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const [viewMode, setViewMode] = useState("table");
   const [govTargetInput, setGovTargetInput] = useState("");
   const [civTargetInput, setCivTargetInput] = useState("");
   const [editingGovTarget, setEditingGovTarget] = useState(false);
@@ -428,72 +427,9 @@ export default function App() {
           <button key={s} onClick={() => setFilterStatus(s)} style={fbtn(filterStatus === s)}>{s}</button>
         ))}
         <span style={{ marginLeft: "auto", fontSize: 12, color: "#94a3b8", marginRight: 8 }}>共 {filtered.length} 筆</span>
-        {/* 檢視切換 */}
-        <div style={{ display: "flex", background: "#f1f5f9", borderRadius: 8, padding: 3, gap: 2 }}>
-          <button onClick={() => setViewMode("table")} style={{ border: "none", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 13, background: viewMode === "table" ? "#1e3a5f" : "transparent", color: viewMode === "table" ? "#fff" : "#64748b", transition: "all 0.15s" }}>☰ 表格</button>
-          <button onClick={() => setViewMode("card")}  style={{ border: "none", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 13, background: viewMode === "card"  ? "#1e3a5f" : "transparent", color: viewMode === "card"  ? "#fff" : "#64748b", transition: "all 0.15s" }}>⊞ 卡片</button>
-        </div>
       </div>
-
-      {/* TABLE VIEW */}
-      {viewMode === "table" && (
-      <div style={{ margin: "0 20px 20px", borderRadius: 14, overflow: "hidden", boxShadow: "0 4px 16px rgba(0,0,0,0.09)", background: "#fff" }}>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: "linear-gradient(90deg,#1e3a5f,#1e4976)", color: "#fff", position: "sticky", top: 52 }}>
-                {["類型","狀態","案名","含稅金額 (仟元)","未稅金額 (仟元)","利潤率 (%)","預估餘絀 (仟元)","操作"].map(h => (
-                  <th key={h} style={{ padding: "12px 11px", textAlign: h==="操作"?"center":"left", whiteSpace: "nowrap", fontWeight: 600, fontSize: 12 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((item, idx) => {
-                const s = surplus(item);
-                return (
-                  <tr key={item.id}
-                    style={{ background: idx%2===0?"#f8fafc":"#fff", transition: "background 0.15s" }}
-                    onMouseEnter={e => e.currentTarget.style.background="#e0f2fe"}
-                    onMouseLeave={e => e.currentTarget.style.background=idx%2===0?"#f8fafc":"#fff"}
-                  >
-                    <td style={{ padding: "11px 11px" }}>
-                      <span style={{ ...tg, background: (TAG_STYLES[item.type]||TAG_STYLES["政收"]).bg, color: (TAG_STYLES[item.type]||TAG_STYLES["政收"]).color }}>{item.type}</span>
-                    </td>
-                    <td style={{ padding: "11px 11px" }}>
-                      <span style={{ ...tg, background: (STATUS_STYLES[item.status]||STATUS_STYLES["爭取中"]).bg, color: (STATUS_STYLES[item.status]||STATUS_STYLES["爭取中"]).color }}>{item.status}</span>
-                    </td>
-                    <td style={{ padding: "11px 11px", fontWeight: 600, color: "#0f2744", whiteSpace: "nowrap" }}>{item.name}</td>
-                    <td style={{ padding: "11px 11px", textAlign: "right", color: item.taxAmount?"#0f2744":"#94a3b8" }}>{fmt(item.taxAmount)}</td>
-                    <td style={{ padding: "11px 11px", textAlign: "right", fontWeight: 700, color: "#1e3a5f" }}>{fmt(item.noTaxAmount)}</td>
-                    <td style={{ padding: "11px 11px", textAlign: "right" }}>
-                      <span style={{ background: "#ede9fe", color: "#6d28d9", borderRadius: 6, padding: "2px 7px", fontWeight: 700, fontSize: 12 }}>{item.profitRate}%</span>
-                    </td>
-                    <td style={{ padding: "11px 11px", textAlign: "right", fontWeight: 700, color: s>0?"#059669":"#ef4444" }}>
-                      {s!=null?fmt(Math.round(s)):"—"}
-                    </td>
-                    <td style={{ padding: "11px 11px", textAlign: "center", whiteSpace: "nowrap" }}>
-                      <button onClick={() => openEdit(item)} style={{ ...ab, background:"#dbeafe", color:"#1d4ed8" }}>✏️</button>
-                      <button onClick={() => setDeleteConfirm(item)} style={{ ...ab, background:"#fee2e2", color:"#dc2626", marginLeft:4 }}>🗑️</button>
-                    </td>
-                  </tr>
-                );
-              })}
-              <tr style={{ background: "#1e3a5f", color: "#fff", fontWeight: 700 }}>
-                <td colSpan={3} style={{ padding: "12px 11px" }}>合計</td>
-                <td style={{ padding: "12px 11px", textAlign: "right" }}>{fmt(filtered.reduce((s,d)=>s+(d.taxAmount||0),0))}</td>
-                <td style={{ padding: "12px 11px", textAlign: "right" }}>{fmt(filtered.reduce((s,d)=>s+d.noTaxAmount,0))}</td>
-                <td />
-                <td style={{ padding: "12px 11px", textAlign: "right", color: "#6ee7b7" }}>{fmt(Math.round(filtered.reduce((s,d)=>s+(surplus(d)||0),0)))}</td>
-                <td />
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      )}
 
       {/* CARD VIEW */}
-      {viewMode === "card" && (
       <div style={{ padding: "0 20px 20px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 14 }}>
           {filtered.map(item => {
@@ -556,7 +492,6 @@ export default function App() {
           </div>
         </div>
       </div>
-      )}
 
       {/* CHARTS */}
       <div style={{ padding: "0 20px 32px" }}>
