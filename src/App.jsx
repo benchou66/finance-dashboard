@@ -222,19 +222,31 @@ export default function App() {
   const parseImportText = (text) => {
     const lines = text.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
     return lines.map((line, i) => {
-      const parts = line.split(/[\t,，]+/).map(p => p.trim()).filter(Boolean);
-      if (parts.length < 3) return { _line: i+1, _raw: line, _error: "欄位不足（至少需要：案名、類型、狀態）" };
-      const name = parts[0];
-      const type = parts.find(p => p === "政收" || p === "民收");
+      // 先用 Tab 或逗號切，沒有的話用空格切
+      const hasTaborComma = /[\t,，]/.test(line);
+      const parts = hasTaborComma
+        ? line.split(/[\t,，]+/).map(p => p.trim()).filter(Boolean)
+        : line.split(/\s+/).map(p => p.trim()).filter(Boolean);
+
+      // 找類型和狀態（不限位置）
+      const type   = parts.find(p => p === "政收" || p === "民收");
       const status = parts.find(p => p === "已簽約" || p === "爭取中");
       if (!type)   return { _line: i+1, _raw: line, _error: "找不到類型（政收/民收）" };
       if (!status) return { _line: i+1, _raw: line, _error: "找不到狀態（已簽約/爭取中）" };
-      const nums = parts.slice(1).filter(p => /^[\d.]+$/.test(p)).map(Number);
+
+      // 案名：排除類型、狀態、數字後的第一個詞
+      const keywords = new Set([type, status]);
+      const name = parts.find(p => !keywords.has(p) && !/^[\d.]+$/.test(p)) ?? "";
+      if (!name) return { _line: i+1, _raw: line, _error: "找不到案名" };
+
+      // 數字
+      const nums = parts.filter(p => /^[\d.]+$/.test(p)).map(Number);
       const profitRate = nums.find(n => n > 0 && n <= 100) ?? 15;
       const bigNums = nums.filter(n => n > 100);
       const taxAmount = bigNums[0] ?? null;
       const noTaxAmount = taxAmount ? Math.round(taxAmount / 1.05) : (bigNums[1] ?? null);
       if (!noTaxAmount) return { _line: i+1, _raw: line, _error: "找不到金額（需大於100的數字）" };
+
       return { _line: i+1, _raw: line, name, type, status, taxAmount, noTaxAmount, profitRate };
     });
   };
