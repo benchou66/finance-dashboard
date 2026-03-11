@@ -457,10 +457,10 @@ export default function App() {
                     onMouseLeave={e => e.currentTarget.style.background=idx%2===0?"#f8fafc":"#fff"}
                   >
                     <td style={{ padding: "11px 11px" }}>
-                      <span style={{ ...tg, background: TAG_STYLES[item.type].bg, color: TAG_STYLES[item.type].color }}>{item.type}</span>
+                      <span style={{ ...tg, background: (TAG_STYLES[item.type]||TAG_STYLES["政收"]).bg, color: (TAG_STYLES[item.type]||TAG_STYLES["政收"]).color }}>{item.type}</span>
                     </td>
                     <td style={{ padding: "11px 11px" }}>
-                      <span style={{ ...tg, background: STATUS_STYLES[item.status].bg, color: STATUS_STYLES[item.status].color }}>{item.status}</span>
+                      <span style={{ ...tg, background: (STATUS_STYLES[item.status]||STATUS_STYLES["爭取中"]).bg, color: (STATUS_STYLES[item.status]||STATUS_STYLES["爭取中"]).color }}>{item.status}</span>
                     </td>
                     <td style={{ padding: "11px 11px", fontWeight: 600, color: "#0f2744", whiteSpace: "nowrap" }}>{item.name}</td>
                     <td style={{ padding: "11px 11px", textAlign: "right", color: item.taxAmount?"#0f2744":"#94a3b8" }}>{fmt(item.taxAmount)}</td>
