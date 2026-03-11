@@ -59,44 +59,49 @@ export default function App() {
   const [editingGovTarget, setEditingGovTarget] = useState(false);
   const [editingCivTarget, setEditingCivTarget] = useState(false);
   const [dbReady, setDbReady] = useState(false);
-  const [saving, setSaving] = useState(false);
 
-  // 初始載入
+  // 初始載入 — 全部並行，不再序列等待
   useEffect(() => {
     (async () => {
-      // 載入案件
-      const casesSnap = await getDocs(query(collection(db, "cases"), orderBy("createdAt")));
-      const rows = casesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setData(rows);
+      const [casesSnap, logsSnap, govTgt, civTgt] = await Promise.all([
+        getDocs(query(collection(db, "cases"), orderBy("createdAt"))),
+        getDocs(query(collection(db, "logs"), orderBy("createdAt", "desc"), limit(200))),
+        getSetting("govTarget"),
+        getSetting("civTarget"),
+      ]);
 
-      // 載入操作記錄
-      const logsSnap = await getDocs(query(collection(db, "logs"), orderBy("createdAt", "desc"), limit(200)));
+      setData(casesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLogs(logsSnap.docs.map(d => {
         const r = d.data();
         return { id: d.id, time: r.createdAt?.toDate().toLocaleString("zh-TW") ?? "", action: r.action, name: r.caseName, detail: r.detail };
       }));
-
-      // 載入設定
-      const govTgt = await getSetting("govTarget");
-      const civTgt = await getSetting("civTarget");
       if (govTgt) setGovTargetInput(govTgt);
       if (civTgt) setCivTargetInput(civTgt);
       setDbReady(true);
     })();
   }, []);
 
-  // 目標金額儲存
-  useEffect(() => { if (dbReady) setSetting("govTarget", govTargetInput); }, [govTargetInput, dbReady]);
-  useEffect(() => { if (dbReady) setSetting("civTarget", civTargetInput); }, [civTargetInput, dbReady]);
+  // 目標金額 — debounce 1 秒後才寫入，避免每打一個字就寫一次
+  useEffect(() => {
+    if (!dbReady) return;
+    const t = setTimeout(() => setSetting("govTarget", govTargetInput), 1000);
+    return () => clearTimeout(t);
+  }, [govTargetInput, dbReady]);
+  useEffect(() => {
+    if (!dbReady) return;
+    const t = setTimeout(() => setSetting("civTarget", civTargetInput), 1000);
+    return () => clearTimeout(t);
+  }, [civTargetInput, dbReady]);
 
   const dataWithCodes = assignCodes(data);
 
-  const addLog = async (action, item) => {
+  // addLog — fire and forget，不 await，不阻塞 UI
+  const addLog = (action, item) => {
     const detail = `${item.type} | ${item.status} | 未稅: ${fmt(item.noTaxAmount)}仟元 | 利潤率: ${item.profitRate}%`;
-    const ref = await addDoc(collection(db, "logs"), { action, caseName: item.name, detail, createdAt: serverTimestamp() });
-    setLogs(prev => [{
-      id: ref.id, time: new Date().toLocaleString("zh-TW"), action, name: item.name, detail
-    }, ...prev].slice(0, 200));
+    addDoc(collection(db, "logs"), { action, caseName: item.name, detail, createdAt: serverTimestamp() })
+      .then(ref => setLogs(prev => [{
+        id: ref.id, time: new Date().toLocaleString("zh-TW"), action, name: item.name, detail
+      }, ...prev].slice(0, 200)));
   };
 
   const openAdd = () => { setForm(EMPTY_FORM); setEditId(null); setShowModal(true); };
@@ -113,26 +118,30 @@ export default function App() {
       noTaxAmount: parseFloat(form.noTaxAmount),
       profitRate: parseFloat(form.profitRate) || 0,
     };
-    setSaving(true);
+
+    // Optimistic UI — 先關 modal、先更新畫面，再背景寫入 Firebase
     if (editId != null) {
-      const { id, code, ...fields } = item;
-      await updateDoc(doc(db, "cases", editId), fields);
       setData(prev => prev.map(d => d.id === editId ? { ...item, id: editId } : d));
+      setShowModal(false);
       addLog("修改", item);
+      const { id, code, ...fields } = item;
+      updateDoc(doc(db, "cases", editId), fields);
     } else {
-      const ref = await addDoc(collection(db, "cases"), { ...item, createdAt: serverTimestamp() });
-      setData(prev => [...prev, { ...item, id: ref.id }]);
+      const tempId = `temp_${Date.now()}`;
+      setData(prev => [...prev, { ...item, id: tempId }]);
+      setShowModal(false);
       addLog("新增", item);
+      addDoc(collection(db, "cases"), { ...item, createdAt: serverTimestamp() })
+        .then(ref => setData(prev => prev.map(d => d.id === tempId ? { ...item, id: ref.id } : d)));
     }
-    setSaving(false);
-    setShowModal(false);
   };
 
   const handleDelete = async (item) => {
-    await deleteDoc(doc(db, "cases", item.id));
+    // Optimistic UI — 先從畫面移除，再背景刪除
     setData(prev => prev.filter(d => d.id !== item.id));
-    addLog("刪除", item);
     setDeleteConfirm(null);
+    addLog("刪除", item);
+    deleteDoc(doc(db, "cases", item.id));
   };
 
   const filtered = dataWithCodes.filter(d =>
@@ -718,7 +727,7 @@ export default function App() {
             )}
             <div style={{ display:"flex", gap:10, marginTop:18, justifyContent:"flex-end" }}>
               <button onClick={()=>setShowModal(false)} style={btn("#94a3b8")}>取消</button>
-              <button onClick={handleSave} style={btn("#2563eb")}>{saving ? "儲存中..." : "儲存"}</button>
+              <button onClick={handleSave} style={btn("#2563eb")}>儲存</button>
             </div>
           </div>
         </div>
