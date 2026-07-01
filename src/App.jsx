@@ -6,7 +6,9 @@ import {
   setDoc, getDoc, query, orderBy, limit, serverTimestamp
 } from "firebase/firestore";
 
-const EMPTY_FORM = { name: "", type: "政收", status: "爭取中", taxAmount: "", noTaxAmount: "", profitRate: "" };
+// 預設年度：以民國年度為準（西元 − 1911）
+const CURRENT_YEAR = new Date().getFullYear() - 1911;
+const EMPTY_FORM = { name: "", type: "政收", status: "爭取中", year: CURRENT_YEAR, taxAmount: "", noTaxAmount: "", profitRate: "" };
 
 function fmt(n) {
   if (n == null || n === "" || isNaN(n)) return "—";
@@ -52,6 +54,7 @@ export default function App() {
   const [showLog, setShowLog] = useState(false);
   const [filterType, setFilterType] = useState("全部");
   const [filterStatus, setFilterStatus] = useState("全部");
+  const [filterYear, setFilterYear] = useState("全部");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [govTargetInput, setGovTargetInput] = useState("");
   const [civTargetInput, setCivTargetInput] = useState("");
@@ -151,7 +154,7 @@ export default function App() {
 
   const openAdd = () => { setForm(EMPTY_FORM); setEditId(null); setShowModal(true); };
   const openEdit = (item) => {
-    setForm({ ...item, taxAmount: item.taxAmount ?? "", noTaxAmount: item.noTaxAmount ?? "", profitRate: item.profitRate ?? "" });
+    setForm({ ...item, year: item.year ?? "", taxAmount: item.taxAmount ?? "", noTaxAmount: item.noTaxAmount ?? "", profitRate: item.profitRate ?? "" });
     setEditId(item.id); setShowModal(true);
   };
 
@@ -159,6 +162,7 @@ export default function App() {
     if (!form.name.trim() || !form.noTaxAmount) return alert("請填寫案名與未稅金額");
     const item = {
       ...form,
+      year: form.year === "" || form.year == null ? null : parseInt(form.year, 10),
       taxAmount: form.taxAmount === "" ? null : parseFloat(form.taxAmount),
       noTaxAmount: parseFloat(form.noTaxAmount),
       profitRate: parseFloat(form.profitRate) || 0,
@@ -200,9 +204,13 @@ export default function App() {
     deleteDoc(doc(db, "cases", item.id));
   };
 
+  // 資料中出現過的年度（由大到小），供年度篩選使用
+  const years = [...new Set(data.map(d => d.year).filter(y => y != null))].sort((a, b) => b - a);
+
   const filtered = dataWithCodes.filter(d =>
     (filterType === "全部" || d.type === filterType) &&
-    (filterStatus === "全部" || d.status === filterStatus)
+    (filterStatus === "全部" || d.status === filterStatus) &&
+    (filterYear === "全部" || String(d.year) === String(filterYear))
   );
 
   const totalNoTax = data.reduce((s, d) => s + d.noTaxAmount, 0);
@@ -246,7 +254,7 @@ export default function App() {
       const noTaxAmount = taxAmount ? Math.round(taxAmount / 1.05) : (bigNums[1] ?? null);
       if (!noTaxAmount) return { _line: i+1, _raw: line, _error: "找不到金額（需大於100的數字）" };
 
-      return { _line: i+1, _raw: line, name, type, status, taxAmount, noTaxAmount, profitRate };
+      return { _line: i+1, _raw: line, name, type, status, year: CURRENT_YEAR, taxAmount, noTaxAmount, profitRate };
     });
   };
 
@@ -426,6 +434,16 @@ export default function App() {
         {["全部","已簽約","爭取中"].map(s => (
           <button key={s} onClick={() => setFilterStatus(s)} style={fbtn(filterStatus === s)}>{s}</button>
         ))}
+        {years.length > 0 && (
+          <>
+            <span style={{ color: "#cbd5e1" }}>|</span>
+            <span style={{ fontSize: 12, color: "#94a3b8" }}>年度</span>
+            <button onClick={() => setFilterYear("全部")} style={fbtn(filterYear === "全部")}>全部</button>
+            {years.map(y => (
+              <button key={y} onClick={() => setFilterYear(y)} style={fbtn(String(filterYear) === String(y))}>{y}</button>
+            ))}
+          </>
+        )}
         <span style={{ marginLeft: "auto", fontSize: 12, color: "#94a3b8", marginRight: 8 }}>共 {filtered.length} 筆</span>
       </div>
 
@@ -439,7 +457,10 @@ export default function App() {
               <div key={item.id} style={{ background: "#fff", borderRadius: 14, padding: "16px 18px", boxShadow: "0 2px 12px rgba(0,0,0,0.08)", borderLeft: `4px solid ${item.type==="政收"?"#1d4ed8":"#059669"}`, position: "relative" }}>
                 {/* Header */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: "#0f2744", flex: 1, paddingRight: 8 }}>{item.name}</div>
+                  <div style={{ flex: 1, paddingRight: 8 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "#0f2744" }}>{item.name}</div>
+                    {item.year != null && <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>{item.year} 年度</div>}
+                  </div>
                   <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
                     <span style={{ ...tg, background: TAG_STYLES[item.type].bg, color: TAG_STYLES[item.type].color }}>{item.type}</span>
                     <span style={{ ...tg, background: STATUS_STYLES[item.status].bg, color: STATUS_STYLES[item.status].color }}>{item.status}</span>
@@ -502,7 +523,7 @@ export default function App() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "#f1f5f9" }}>
-                {["類型","狀態","案名","含稅金額 (仟元)","未稅金額 (仟元)","利潤率 (%)","預估餘絀 (仟元)","操作"].map(h => (
+                {["類型","狀態","年度","案名","含稅金額 (仟元)","未稅金額 (仟元)","利潤率 (%)","預估餘絀 (仟元)","操作"].map(h => (
                   <th key={h} style={{ padding: "10px 11px", textAlign: h==="操作"?"center":"left", whiteSpace: "nowrap", fontWeight: 700, fontSize: 12, color: "#475569", borderBottom: "2px solid #e2e8f0" }}>{h}</th>
                 ))}
               </tr>
@@ -524,6 +545,7 @@ export default function App() {
                     <td style={{ padding: "11px 11px", borderBottom: "1px solid #f1f5f9" }}>
                       <span style={{ ...tg, background: statusStyle.bg, color: statusStyle.color }}>{item.status||"—"}</span>
                     </td>
+                    <td style={{ padding: "11px 11px", color: item.year!=null?"#475569":"#cbd5e1", whiteSpace: "nowrap", borderBottom: "1px solid #f1f5f9" }}>{item.year!=null?item.year:"—"}</td>
                     <td style={{ padding: "11px 11px", fontWeight: 600, color: "#0f2744", whiteSpace: "nowrap", borderBottom: "1px solid #f1f5f9" }}>{item.name}</td>
                     <td style={{ padding: "11px 11px", textAlign: "right", color: item.taxAmount?"#0f2744":"#94a3b8", borderBottom: "1px solid #f1f5f9" }}>{fmt(item.taxAmount)}</td>
                     <td style={{ padding: "11px 11px", textAlign: "right", fontWeight: 700, color: "#1e3a5f", borderBottom: "1px solid #f1f5f9" }}>{fmt(item.noTaxAmount)}</td>
@@ -541,7 +563,7 @@ export default function App() {
                 );
               })}
               <tr style={{ background: "#1e3a5f", color: "#fff", fontWeight: 700 }}>
-                <td colSpan={3} style={{ padding: "12px 11px" }}>合計</td>
+                <td colSpan={4} style={{ padding: "12px 11px" }}>合計</td>
                 <td style={{ padding: "12px 11px", textAlign: "right" }}>{fmt(filtered.reduce((s,d)=>s+(d.taxAmount||0),0))}</td>
                 <td style={{ padding: "12px 11px", textAlign: "right" }}>{fmt(filtered.reduce((s,d)=>s+d.noTaxAmount,0))}</td>
                 <td />
@@ -807,6 +829,9 @@ export default function App() {
                 <select style={fi} value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value}))}>
                   <option>已簽約</option><option>爭取中</option>
                 </select>
+              </div>
+              <div style={fg}><label style={fl}>年度 <span style={{ color:"#94a3b8", fontWeight:400 }}>（民國年）</span></label>
+                <input style={fi} type="number" value={form.year} onChange={e=>setForm(p=>({...p,year:e.target.value}))} placeholder="例：115" />
               </div>
               <div style={fg}><label style={fl}>目標含稅金額 (仟元)</label>
                 <input style={fi} type="number" value={form.taxAmount} onChange={e => {
